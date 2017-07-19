@@ -33,7 +33,7 @@ from mutalyzer.mutator import Mutator
 from mutalyzer.mapping import Converter
 from mutalyzer import Retriever
 from mutalyzer import GenRecord
-
+from mutalyzer.nc_db import get_record
 
 # Exceptions used (privately) in this module.
 class _VariantError(Exception): pass
@@ -1746,10 +1746,36 @@ def check_variant(description, output):
                     'Indexing by protein isoform is not supported.')
         retriever = Retriever.GenBankRetriever(output)
 
-    retrieved_record = retriever.loadrecord(record_id)
+    print(parsed_description)
+
+    retrieved_record = get_record(record_id)
+
+    if retrieved_record is None:
+        retrieved_record = retriever.loadrecord(record_id)
 
     if not retrieved_record:
         return
+
+    print("begin print")
+    print("gene number: %s" % len(retrieved_record.geneList))
+    print("transcripts number 1st gene: %s" % len(retrieved_record.geneList[0].transcriptList))
+    print("transcripts number 2nd gene: %s" % len(retrieved_record.geneList[1].transcriptList))
+    # print(retrieved_record.geneList[0].transcriptList[0].name)
+    # print(retrieved_record.geneList[0].transcriptList[1].name)
+    # print(retrieved_record.geneList[0].transcriptList[0].mRNA)
+    # print(retrieved_record.geneList[0].transcriptList[0].mRNA.location)
+    # print(retrieved_record.geneList[0].transcriptList[0].mRNA.positionList)
+    # print(retrieved_record.geneList[0].transcriptList[0].CDS)
+    # print(retrieved_record.geneList[0].transcriptList[0].CDS.location)
+    # print(retrieved_record.geneList[0].transcriptList[0].CDS.positionList)
+    print(retrieved_record.geneList[0].transcriptList[0].link)
+    # print(retrieved_record.geneList[0].transcriptList[0].linkMethod)
+    # print(retrieved_record.geneList[0].transcriptList[0].transcriptID)
+    # print(retrieved_record.geneList[0].transcriptList[0].proteinID)
+    # print(retrieved_record.geneList[0].transcriptList[0].transcriptProduct)
+    # print(retrieved_record.geneList[0].transcriptList[0].proteinProduct)
+    print("linkMethod: %s" % retrieved_record.geneList[0].transcriptList[0].linkMethod)
+    print("end print")
 
     if gene_symbol == '' and transcript_id == '' and \
         parsed_description.AccNoTransVar:
@@ -2029,4 +2055,11 @@ def check_variant(description, output):
                               full_protein_description))
 
     _add_batch_output(output)
+
+    print(record)
+    print(retrieved_record.geneList[0].transcriptList[0].link)
+    print("Exon: %s" % retrieved_record.geneList[0].transcriptList[0].exon)
+    print("linkMethod: %s" % retrieved_record.geneList[0].transcriptList[0].linkMethod)
+
+
 #check_variant
