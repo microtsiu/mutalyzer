@@ -1622,6 +1622,8 @@ def process_variant(mutator, description, record, output):
     record.checkRecord()
 
     if transcript and not transcript.transcribe:
+        print("Transcript: %s" % transcript)
+        print("Transcript transcribe: %s" % transcript.transcribe)
         # Todo: Shouldn't we add some message here?
         raise _VariantError()
 
@@ -1746,8 +1748,6 @@ def check_variant(description, output):
                     'Indexing by protein isoform is not supported.')
         retriever = Retriever.GenBankRetriever(output)
 
-    print(parsed_description)
-
     retrieved_record = get_record(record_id)
 
     if retrieved_record is None:
@@ -1755,27 +1755,6 @@ def check_variant(description, output):
 
     if not retrieved_record:
         return
-
-    print("begin print")
-    print("gene number: %s" % len(retrieved_record.geneList))
-    print("transcripts number 1st gene: %s" % len(retrieved_record.geneList[0].transcriptList))
-    print("transcripts number 2nd gene: %s" % len(retrieved_record.geneList[1].transcriptList))
-    # print(retrieved_record.geneList[0].transcriptList[0].name)
-    # print(retrieved_record.geneList[0].transcriptList[1].name)
-    # print(retrieved_record.geneList[0].transcriptList[0].mRNA)
-    # print(retrieved_record.geneList[0].transcriptList[0].mRNA.location)
-    # print(retrieved_record.geneList[0].transcriptList[0].mRNA.positionList)
-    # print(retrieved_record.geneList[0].transcriptList[0].CDS)
-    # print(retrieved_record.geneList[0].transcriptList[0].CDS.location)
-    # print(retrieved_record.geneList[0].transcriptList[0].CDS.positionList)
-    print(retrieved_record.geneList[0].transcriptList[0].link)
-    # print(retrieved_record.geneList[0].transcriptList[0].linkMethod)
-    # print(retrieved_record.geneList[0].transcriptList[0].transcriptID)
-    # print(retrieved_record.geneList[0].transcriptList[0].proteinID)
-    # print(retrieved_record.geneList[0].transcriptList[0].transcriptProduct)
-    # print(retrieved_record.geneList[0].transcriptList[0].proteinProduct)
-    print("linkMethod: %s" % retrieved_record.geneList[0].transcriptList[0].linkMethod)
-    print("end print")
 
     if gene_symbol == '' and transcript_id == '' and \
         parsed_description.AccNoTransVar:
@@ -1826,6 +1805,7 @@ def check_variant(description, output):
     try:
         process_variant(mutator, parsed_description, record, output)
     except _VariantError:
+        print ("VariantError")
         return
     finally:
         # The legend needs to be created after processing the variant (which
@@ -2055,11 +2035,6 @@ def check_variant(description, output):
                               full_protein_description))
 
     _add_batch_output(output)
-
-    print(record)
-    print(retrieved_record.geneList[0].transcriptList[0].link)
-    print("Exon: %s" % retrieved_record.geneList[0].transcriptList[0].exon)
-    print("linkMethod: %s" % retrieved_record.geneList[0].transcriptList[0].linkMethod)
 
 
 #check_variant

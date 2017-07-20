@@ -420,75 +420,113 @@ def get_record(record_id):
     reference = get_reference(accession, version)
     if reference is None:
         return None
-    print(reference)
     record.source_id = reference.accession
     record.id = reference.accession
     record.source_accession = reference.accession
     record.source_version = reference.version
     record.organism = 'Homo sapiens'
     record.molType = 'g'
-    transcripts = []
     geneDict = {}
     # transcripts = Transcript.query.filter_by(reference_id=reference.id).\
     #     filter(Transcript.transcript_start > 1, Transcript.transcript_stop < 10000000).all()
-    transcripts = Transcript.query.filter_by(reference_id=reference.id).all()
-    print("Begin transcript loop time %s" % datetime.now())
-    for transcript in transcripts:
-        if transcript.gene in geneDict:
-            gene = geneDict[transcript.gene]
-        else:
-            gene = Gene(transcript.gene)
+    db_transcripts = Transcript.query.filter_by(reference_id=reference.id).all()
+    # print("Begin transcript DB get loop time %s" % datetime.now())
+    # for transcript in db_transcripts:
+    #     if transcript.gene in geneDict:
+    #         gene = geneDict[transcript.gene]
+    #     else:
+    #         gene = Gene(transcript.gene)
+    #
+    #     if transcript.strand == '+':
+    #         gene.orientation = 1
+    #     if transcript.strand == '-':
+    #         gene.orientation = -1
+    #
+    #     version = gene.newLocusTag()
+    #     myTranscript = Locus(version)
+    #
+    #     myTranscript.mRNA = PList()
+    #     myTranscript.mRNA.location = [transcript.transcript_start,
+    #                                   transcript.transcript_stop]
+    #     myTranscript.CDS = PList()
+    #     myTranscript.CDS.location = [transcript.cds_start,
+    #                      transcript.cds_stop]
+    #     if transcript.exons and isinstance(transcript.exons, list):
+    #         for exon in transcript.exons:
+    #             myTranscript.CDS.positionList.append(exon.start)
+    #             myTranscript.CDS.positionList.append(exon.stop)
+    #     transcript_id = transcript.transcript_accession + '.' + transcript.transcript_version
+    #     myTranscript.transcriptID = transcript_id
+    #     myTranscript.proteinID = transcript.protein_accession + '.' + transcript.protein_version
+    #     myTranscript.linkMethod = 'ncbi'
+    #
+    #     gene.transcriptList.append(myTranscript)
+    #     geneDict[gene.name] = gene
+    # print("End transcript DB get loop time %s" % datetime.now())
 
-        version = gene.newLocusTag()
-
-        if transcript.strand == '+':
-            gene.orientation = 1
-        if transcript.strand == '-':
-            gene.orientation = -1
-        mrna = PList()
-        mrna.location = [transcript.transcript_start,
-                         transcript.transcript_stop]
-        cds = PList()
-        cds.location = [transcript.cds_start,
-                         transcript.cds_stop]
+    print("%s: Begin local transcripts creation loop time" % datetime.now())
+    transcripts = []
+    for transcript in db_transcripts:
+        myTranscript = {}
+        myTranscript['gene'] = transcript.gene
+        myTranscript['strand'] = transcript.strand
+        myTranscript['transcript_start'] = transcript.transcript_start
+        myTranscript['transcript_stop'] = transcript.transcript_stop
+        myTranscript['cds_start'] =transcript.cds_start
+        myTranscript['cds_stop'] = transcript.cds_stop
+        myTranscript['exons'] = []
         if transcript.exons and isinstance(transcript.exons, list):
             for exon in transcript.exons:
-                cds.positionList.append(exon.start)
-                cds.positionList.append(exon.stop)
-        locus = Locus(version)
-        locus.mrna = mrna
-        locus.cds = cds
-        locus.transcriptID = transcript.transcript_accession + '.' + transcript.transcript_version
-        locus.proteinID = transcript.protein_accession + '.' + transcript.protein_version
-        locus.linkMethod = 'ncbi'
+                exon = {'start': exon.start,
+                        'stop': exon.stop}
+                myTranscript['exons'].append(exon)
+        myTranscript['transcriptID'] = transcript.transcript_accession + '.' + transcript.transcript_version
+        myTranscript['proteinID'] = transcript.protein_accession + '.' + transcript.protein_version
+        myTranscript['linkMethod'] = 'ncbi'
+        transcripts.append(myTranscript)
+    print("%s: End local transcripts creation loop time" % datetime.now())
 
-        gene.transcriptList.append(locus)
+    print("%s: Begin transcript dict get loop time" % datetime.now())
+    for transcript in transcripts:
+        if transcript['gene'] in geneDict:
+            gene = geneDict[transcript['gene']]
+        else:
+            gene = Gene(transcript['gene'])
+
+        if transcript['strand'] == '+':
+            gene.orientation = 1
+        if transcript['strand'] == '-':
+            gene.orientation = -1
+
+        version = gene.newLocusTag()
+        myTranscript = Locus(version)
+
+        myTranscript.mRNA = PList()
+        myTranscript.mRNA.location = [transcript['transcript_start'],
+                                      transcript['transcript_stop']]
+        myTranscript.CDS = PList()
+        myTranscript.CDS.location = [transcript['cds_start'],
+                         transcript['cds_stop']]
+        if transcript.get('exons') and isinstance(transcript.get('exons'), list):
+            for exon in transcript['exons']:
+                myTranscript.CDS.positionList.append(exon['start'])
+                myTranscript.CDS.positionList.append(exon['stop'])
+        myTranscript.transcriptID = transcript['transcriptID']
+        myTranscript.proteinID = transcript['proteinID']
+        myTranscript.linkMethod = 'ncbi'
+        myTranscript.transcribe = True
+
+        gene.transcriptList.append(myTranscript)
         geneDict[gene.name] = gene
+    print("%s: End transcript dict get loop time" % datetime.now())
 
-    print("Begin record.geneList time %s" % datetime.now())
+    print("%s: Begin record.geneList time" % datetime.now())
     record.geneList = list(geneDict.values())
-    print("end record.geneList time %s" % datetime.now())
+    print("%s: End record.geneList time" % datetime.now())
 
     seq_path = "/home/mlefter/projects/mutalyzer/data/gbparserout/" \
                + reference.checksum_sequence + '.sequence'
-    print(seq_path)
-
     record.seq = Seq(get_sequence_mmap(seq_path, 1, reference.length+1), generic_dna)
-    # record.seq = Seq(get_sequence_mmap(seq_path, 1, 1000), generic_dna)
-
-    # print(retrieved_record.geneList[0].transcriptList[0].mRNA)
-    # print(retrieved_record.geneList[0].transcriptList[0].mRNA.location)
-    # print(retrieved_record.geneList[0].transcriptList[0].mRNA.positionList)
-    # print(retrieved_record.geneList[0].transcriptList[0].CDS)
-    # print(retrieved_record.geneList[0].transcriptList[0].CDS.location)
-    # print(retrieved_record.geneList[0].transcriptList[0].CDS.positionList)
-    # print(retrieved_record.geneList[0].transcriptList[0].link)
-    # print(retrieved_record.geneList[0].transcriptList[0].linkMethod)
-    # print(retrieved_record.geneList[0].transcriptList[0].transcriptID)
-    # print(retrieved_record.geneList[0].transcriptList[0].proteinID)
-    # print(retrieved_record.geneList[0].transcriptList[0].transcriptProduct)
-    # print(retrieved_record.geneList[0].transcriptList[0].proteinProduct)
-
     return record
 
 
