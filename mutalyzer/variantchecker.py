@@ -33,7 +33,8 @@ from mutalyzer.mutator import Mutator
 from mutalyzer.mapping import Converter
 from mutalyzer import Retriever
 from mutalyzer import GenRecord
-from mutalyzer.nc_db import get_record
+from mutalyzer.nc_db import get_nc_record
+from datetime import datetime
 
 # Exceptions used (privately) in this module.
 class _VariantError(Exception): pass
@@ -1748,7 +1749,7 @@ def check_variant(description, output):
                     'Indexing by protein isoform is not supported.')
         retriever = Retriever.GenBankRetriever(output)
 
-    retrieved_record = get_record(record_id)
+    retrieved_record = get_nc_record(record_id, parsed_description)
 
     if retrieved_record is None:
         retrieved_record = retriever.loadrecord(record_id)
@@ -2035,6 +2036,5 @@ def check_variant(description, output):
                               full_protein_description))
 
     _add_batch_output(output)
-
 
 #check_variant
