@@ -11,7 +11,6 @@ from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, generic_protein
 
 from mutalyzer.GenRecord import PList, Locus, Gene, Record
-from mutalyzer.mapping import Converter
 
 url = make_url('postgresql://gbparser:parolamea@localhost/gbparser')
 
@@ -420,41 +419,7 @@ def get_reference(accession, version):
     return reference
 
 
-def get_nc_record(record_id, description):
-    """
-    Get an NC record from the gbparser database and transform it into the
-    Mutalyzer record format.
-
-    :param record_id: HGVS format record description.
-    :param description: HGVS description object.
-    :return: The record in mutalyzer format or None if not found.
-    """
-    converter = Converter(assembly, output)
-
-    variant = description.RawVar
-    position_start = position_end = variant.StartLoc.PtLoc
-    if variant.EndLoc:
-        position_end = variant.EndLoc.PtLoc
-
-    print('first location {}'.format(position_start[0]))
-    print('last location {}'.format(position_end[0]))
-
-    record = Record()
-    accession = record_id.split('.')[0]
-    version = record_id.split('.')[1]
-    reference = get_reference(accession, version)
-    if reference is None:
-        return None
-    record.source_id = reference.accession
-    record.id = reference.accession
-    record.source_accession = reference.accession
-    record.source_version = reference.version
-    record.organism = 'Homo sapiens'
-    record.molType = 'g'
-
-    # Get the DB transcript entries.
-    db_transcripts = get_transcripts(accession, version, position_start[0], position_end[0])
-
+def complete_muta_record(record, db_transcripts):
     # Extracting the transcripts from the DB entries.
     transcripts = []
     for transcript in db_transcripts:
@@ -513,7 +478,55 @@ def get_nc_record(record_id, description):
 
     record.geneList = list(gene_dict.values())
 
-    # Get the sequewnce.
+
+
+def get_nc_record(record_id, description, output):
+    """
+    Get an NC record from the gbparser database and transform it into the
+    Mutalyzer record format.
+
+    :param record_id: HGVS format record description.
+    :param description: HGVS description object.
+    :return: The record in mutalyzer format or None if not found.
+    """
+    if description.RefType in ['p', 'm', 'n']:
+        output.addMessage(
+            __file__, 4, 'ECHROMCOORD', "Could not retrieve information for "
+                                        "the provided '{}.' coordinate system.".format(description.RefType))
+        return None
+
+    record = Record()
+    accession = record_id.split('.')[0]
+    version = record_id.split('.')[1]
+    reference = get_reference(accession, version)
+    if reference is None:
+        return None
+    record.source_id = reference.accession
+    record.id = reference.accession
+    record.source_accession = reference.accession
+    record.source_version = reference.version
+    record.organism = 'Homo sapiens'
+    record.molType = 'g'
+
+    if description.RefType == 'g':
+        variant = description.RawVar
+        print(variant)
+        position_start = position_end = variant.StartLoc.PtLoc
+        if variant.EndLoc:
+            position_end = variant.EndLoc.PtLoc
+
+        print('first location {}'.format(position_start[0]))
+        print('last location {}'.format(position_end[0]))
+        # Get the DB transcript entries.
+        db_transcripts = get_transcripts(accession, version, position_start[0], position_end[0])
+    elif description.RefType == 'c':
+        db_transcripts = Transcript.query.filter_by(reference_id=reference.id).all()
+    else:
+        return None
+
+    complete_muta_record(record, db_transcripts)
+
+    # Get the sequence.
     seq_path = "/home/mlefter/projects/mutalyzer/data/gbparserout/" \
                + reference.checksum_sequence + '.sequence'
     record.seq = Seq(get_sequence_mmap(seq_path, 1, reference.length + 1), generic_dna)

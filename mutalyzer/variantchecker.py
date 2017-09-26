@@ -1749,7 +1749,7 @@ def check_variant(description, output):
                     'Indexing by protein isoform is not supported.')
         retriever = Retriever.GenBankRetriever(output)
 
-    retrieved_record = get_nc_record(record_id, parsed_description)
+    retrieved_record = get_nc_record(record_id, parsed_description, output)
 
     if retrieved_record is None:
         retrieved_record = retriever.loadrecord(record_id)
