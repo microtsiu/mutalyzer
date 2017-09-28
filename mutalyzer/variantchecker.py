@@ -1749,11 +1749,17 @@ def check_variant(description, output):
                     'Indexing by protein isoform is not supported.')
         retriever = Retriever.GenBankRetriever(output)
 
-    retrieved_record = get_nc_record(record_id, parsed_description, output)
+    # We first check if NC retrieval works, just for speed considerations.
+    # It would have taken much more time to leave the previous flow, i.e.,
+    # try to get it from the cache, then go to NCBI, and find out that the
+    # reference file size is > 10MB.
+    retrieved_record = get_nc_record(record_id, description,
+                                     parsed_description, output)
 
     if retrieved_record is None:
         retrieved_record = retriever.loadrecord(record_id)
     else:
+        # To remove the download link text from the name checker page.
         filetype = 'GB_NC'
 
     if not retrieved_record:

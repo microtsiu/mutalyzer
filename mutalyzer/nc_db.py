@@ -89,19 +89,24 @@ def complete_muta_record(record, db_transcripts):
     record.geneList = list(gene_dict.values())
 
 
-def get_nc_record(record_id, description, output):
+def get_nc_record(record_id, description, parsed_description, output):
     """
     Get an NC record from the gbparser database and transform it into the
     Mutalyzer record format.
 
     :param record_id: HGVS format record description.
-    :param description: HGVS description object.
+    :param parsed_description: HGVS description object.
     :return: The record in mutalyzer format or None if not found.
     """
-    if description.RefType in ['p', 'm', 'n']:
+    if parsed_description.LrgAcc:
+        return None
+    elif 'NC' not in description:
+        return None
+
+    if parsed_description.RefType in ['p', 'm', 'n']:
         output.addMessage(
             __file__, 4, 'ECHROMCOORD', "Could not retrieve information for "
-                                        "the provided '{}.' coordinate system.".format(description.RefType))
+                                        "the provided '{}.' coordinate system.".format(parsed_description.RefType))
         return None
 
     record = Record()
@@ -117,8 +122,8 @@ def get_nc_record(record_id, description, output):
     record.organism = 'Homo sapiens'
     record.molType = 'g'
 
-    if description.RefType == 'g':
-        variant = description.RawVar
+    if parsed_description.RefType == 'g':
+        variant = parsed_description.RawVar
         print(variant)
         position_start = position_end = variant.StartLoc.PtLoc
         if variant.EndLoc:
@@ -128,7 +133,7 @@ def get_nc_record(record_id, description, output):
         print('last location {}'.format(position_end[0]))
         # Get the DB transcript entries.
         db_transcripts = get_transcripts(accession, version, position_start[0], position_end[0])
-    elif description.RefType == 'c':
+    elif parsed_description.RefType == 'c':
         db_transcripts = Transcript.query.filter_by(reference_id=reference.id).all()
     else:
         return None
