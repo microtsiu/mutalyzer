@@ -1753,6 +1753,8 @@ def check_variant(description, output):
 
     if retrieved_record is None:
         retrieved_record = retriever.loadrecord(record_id)
+    else:
+        filetype = 'GB_NC'
 
     if not retrieved_record:
         return

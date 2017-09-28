@@ -254,8 +254,10 @@ def name_checker():
     if reference:
         if record_type == 'LRG':
             reference_filename = reference + '.xml'
-        else :
+        elif record_type == 'GB':
             reference_filename = reference + '.gb'
+        else:
+            reference_filename = None
     else:
         reference_filename = None
 
