@@ -132,9 +132,9 @@
         {% endif %}
 
         {% if descriptions %}
-          <h4>
+          <h4>Affected transcripts -
             <a data-toggle="collapse" href="#collapseTranscripts" aria-expanded="false" aria-controls="collapseTranscripts">
-            Affected transcripts
+            {{ descriptions|length }}
             </a>
           </h4>
           <div class="collapse" id="collapseTranscripts">
@@ -150,9 +150,9 @@
           </div>
         {% endif %}
         {% if protDescriptions %}
-          <h4>
+          <h4>Affected proteins -
             <a data-toggle="collapse" href="#collapseProteins" aria-expanded="false" aria-controls="collapseProteins">
-            Affected proteins
+            {{ protDescriptions|length }}
             </a>
           </h4>
           <div class="collapse" id="collapseProteins">
