@@ -7,6 +7,8 @@ from Bio.Alphabet import generic_dna, generic_protein
 from mutalyzer.GenRecord import PList, Locus, Gene, Record
 from mutalyzer.dbgb.models import Transcript, Reference
 
+from mutalyzer.config import settings
+
 
 def get_sequence_mmap(file_path, start, end):
     with open(file_path, "r+b") as f:
@@ -141,9 +143,9 @@ def get_nc_record(record_id, description, parsed_description, output):
     complete_muta_record(record, db_transcripts)
 
     # Get the sequence.
-    seq_path = "/home/mlefter/projects/mutalyzer/data/gbparserout/" \
-               + reference.checksum_sequence + '.sequence'
-    record.seq = Seq(get_sequence_mmap(seq_path, 1, reference.length + 1), generic_dna)
+    seq_path = settings.SEQ_PATH + reference.checksum_sequence + '.sequence'
+    record.seq = Seq(get_sequence_mmap(seq_path, 1, reference.length + 1),
+                     generic_dna)
 
     return record
 
