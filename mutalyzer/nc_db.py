@@ -91,6 +91,34 @@ def complete_muta_record(record, db_transcripts):
     record.geneList = list(gene_dict.values())
 
 
+def get_description_boundary_positions(description):
+    """
+    Determines the minimum and maximum positions that appear in the operations
+    of an HGVS description.
+
+    For 'NC_000001.11:g.[100T>C;750A>G;2000C>T]' it should return 100 and 2000.
+    We could have a problem here for del operations, for which maybe we should
+    consider all the transcripts that appear after that operation.
+
+    :param description: Parsed HGVS description.
+    :return: Minimum and maxmimum positions that appear in the description.
+    """
+    if description.SingleAlleleVarSet:
+        variants = [v.RawVar for v in description.SingleAlleleVarSet]
+    else:
+        variants = [description.RawVar]
+
+    positions = set()
+    for variant in variants:
+        first_location = last_location = variant.StartLoc.PtLoc
+        if variant.EndLoc:
+            last_location = variant.EndLoc.PtLoc
+        positions.add(int(first_location.Main))
+        positions.add(int(last_location.Main))
+
+    return min(positions), max(positions)
+
+
 def get_nc_record(record_id, description, parsed_description, output):
     """
     Get an NC record from the gbparser database and transform it into the
@@ -125,16 +153,10 @@ def get_nc_record(record_id, description, parsed_description, output):
     record.molType = 'g'
 
     if parsed_description.RefType == 'g':
-        variant = parsed_description.RawVar
-        print(variant)
-        position_start = position_end = variant.StartLoc.PtLoc
-        if variant.EndLoc:
-            position_end = variant.EndLoc.PtLoc
-
-        print('first location {}'.format(position_start[0]))
-        print('last location {}'.format(position_end[0]))
+        # Find the start and end positions.
+        position_start, position_end = get_description_boundary_positions(parsed_description)
         # Get the DB transcript entries.
-        db_transcripts = get_transcripts(accession, version, position_start[0], position_end[0])
+        db_transcripts = get_transcripts(accession, version, position_start, position_end)
     elif parsed_description.RefType == 'c':
         db_transcripts = Transcript.query.filter_by(reference_id=reference.id).all()
     else:
@@ -150,16 +172,45 @@ def get_nc_record(record_id, description, parsed_description, output):
     return record
 
 
+def get_db_boundaries_positions(reference, position_start, position_end):
+
+    p_s = position_start
+    p_e = position_end
+
+    positions = {p_s, p_e}
+
+    while True:
+        print(p_s, p_e)
+
+        transcripts = Transcript.query.filter_by(reference_id=reference.id).\
+            filter(((Transcript. transcript_start < p_s) & (Transcript.transcript_stop > p_s)) |
+                   ((Transcript.transcript_start > p_s) & (Transcript.transcript_stop < p_e)) |
+                   ((Transcript.transcript_start < p_s) & (Transcript.transcript_stop > p_e))).all()
+        for transcript in transcripts:
+            positions.add(transcript.transcript_start)
+            positions.add(transcript.transcript_stop)
+        if min(positions) == p_s and max(positions) == p_e:
+            break
+        else:
+            p_s = min(positions)
+            p_e = max(positions)
+
+    print('final', p_s, p_e)
+
+    return p_s, p_e
+
+
 def get_transcripts(accession, version, position_start, position_end):
     reference = get_reference(accession, version)
 
-    p_s = int(position_start) - 100000
-    p_e = int(position_end) + 100000
+    p_s, p_e = get_db_boundaries_positions(reference, int(position_start), int(position_end))
 
-    transcripts = Transcript.query.filter_by(reference_id=reference.id). \
-        filter(((Transcript.transcript_start <= p_s) & (p_s <= Transcript.transcript_stop)) |
-               ((Transcript.transcript_start <= p_e) & (p_e <= Transcript.transcript_stop)) |
-               ((Transcript.transcript_start >= p_s) & (p_e >= Transcript.transcript_stop))
-               ) \
-        .all()
+    # get_db_boundaries_positions(reference, p_s, p_e)
+
+    transcripts = Transcript.query.filter_by(reference_id=reference.id).\
+        filter(((Transcript. transcript_start < p_s) & (Transcript.transcript_stop > p_s)) |
+               ((Transcript.transcript_start > p_s) & (Transcript.transcript_stop < p_e)) |
+               ((Transcript.transcript_start < p_e) & (Transcript.transcript_stop > p_e)) |
+               ((Transcript.transcript_start < p_s) & (Transcript.transcript_stop > p_e))).all()
+
     return transcripts
