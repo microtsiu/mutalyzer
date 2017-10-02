@@ -77,6 +77,8 @@ def get_mutalyzer_record(reference, db_transcripts):
                 my_transcript['exons'].append(exon)
         transcripts.append(my_transcript)
 
+    print("%s: End transcripts formation" % datetime.now())
+
     # Generating the actual record entries in the Mutalyzer format.
     gene_dict = {}
     for transcript in transcripts:
@@ -191,6 +193,8 @@ def get_nc_record(record_id, description, parsed_description, output):
         db_transcripts = Transcript.query.filter_by(reference_id=reference.id).all()
     else:
         return None
+
+    print("%s: End nc_db get_transcripts" % datetime.now())
 
     return get_mutalyzer_record(reference, db_transcripts)
 

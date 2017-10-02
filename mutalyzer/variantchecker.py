@@ -1754,10 +1754,10 @@ def check_variant(description, output):
     # try to get it from the cache, then go to NCBI, and find out that the
     # reference file size is > 10MB.
     if filetype == 'GB' and 'NC' in record_id:
-        print("Begin nc db retrieve at %s" % datetime.now())
+        print("%s: Begin nc_db." % datetime.now())
         retrieved_record = get_nc_record(record_id, description,
                                          parsed_description, output)
-        print("End nc db retrieve at %s" % datetime.now())
+        print("%s: End nc_db." % datetime.now())
     else:
         retrieved_record = None
 
@@ -2049,7 +2049,7 @@ def check_variant(description, output):
                               full_protein_description))
 
     _add_batch_output(output)
-    print("End check_variant at %s" % datetime.now())
+    print("%s: End check_variant" % datetime.now())
 
 
 #check_variant
