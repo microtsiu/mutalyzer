@@ -1753,10 +1753,13 @@ def check_variant(description, output):
     # It would have taken much more time to leave the previous flow, i.e.,
     # try to get it from the cache, then go to NCBI, and find out that the
     # reference file size is > 10MB.
-    print("Begin nc db retrieve at %s" % datetime.now())
-    retrieved_record = get_nc_record(record_id, description,
-                                     parsed_description, output)
-    print("End nc db retrieve at %s" % datetime.now())
+    if filetype == 'GB' and 'NC' in record_id:
+        print("Begin nc db retrieve at %s" % datetime.now())
+        retrieved_record = get_nc_record(record_id, description,
+                                         parsed_description, output)
+        print("End nc db retrieve at %s" % datetime.now())
+    else:
+        retrieved_record = None
 
     if retrieved_record is None:
         retrieved_record = retriever.loadrecord(record_id)
