@@ -2,6 +2,7 @@ import time
 from datetime import datetime
 
 import mmap
+import os
 from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, generic_protein
 from mutalyzer.GenRecord import PList, Locus, Gene, Record
@@ -117,8 +118,13 @@ def get_mutalyzer_record(reference, db_transcripts):
 
     # Get the sequence.
     seq_path = settings.SEQ_PATH + reference.checksum_sequence + '.sequence'
-    record.seq = Seq(get_sequence_mmap(seq_path, 1, reference.length + 1),
-                     generic_dna)
+    try:
+        seq = Seq(get_sequence_mmap(seq_path, 1, reference.length + 1),
+                  generic_dna)
+    except IOError:
+        return None
+    else:
+        record.seq = seq
 
     return record
 
@@ -149,6 +155,25 @@ def get_description_boundary_positions(description):
     return min(positions), max(positions)
 
 
+def configuration_check(output):
+    # Check if the required variables were set into settings.
+    try:
+        settings.SEQ_PATH
+        settings.DATABASE_GB_URI
+    except (NameError, AttributeError):
+        output.addMessage(
+            __file__, 2, 'NCSETTINGS', 'Chromosomal database settings not set.')
+        return False
+
+    # Check if the sequence folder exists.
+    if not os.path.isdir(settings.SEQ_PATH):
+        output.addMessage(
+            __file__, 2, 'NCSEQDIR', 'Sequence directory does not exist.')
+        return False
+
+    return True
+
+
 def get_nc_record(record_id, description, parsed_description, output):
     """
     Get an NC record from the gbparser database and transform it into the
@@ -158,19 +183,13 @@ def get_nc_record(record_id, description, parsed_description, output):
     :param parsed_description: HGVS description object.
     :return: The record in mutalyzer format or None if not found.
     """
-    # Check if the required variables were set into settings.
-    try:
-        settings.SEQ_PATH
-        settings.DATABASE_GB_URI
-    except (NameError, AttributeError):
-        output.addMessage(
-            __file__, 2, "NCSETTINGS", "Chromosomal database settings not set.")
+    if not configuration_check(output):
         return None
 
     if parsed_description.RefType in ['p', 'm', 'n']:
         output.addMessage(
-            __file__, 4, 'ECHROMCOORD', "Could not retrieve information for "
-                                        "the provided '{}.' coordinate system."
+            __file__, 4, 'ECHROMCOORD', 'Could not retrieve information for '
+                                        'the provided {}. coordinate system.'
                                         .format(parsed_description.RefType))
         return None
 
