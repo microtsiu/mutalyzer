@@ -1755,8 +1755,7 @@ def check_variant(description, output):
     # reference file size is > 10MB.
     if filetype == 'GB' and 'NC' in record_id:
         print("%s: Begin nc_db." % datetime.now())
-        retrieved_record = get_nc_record(record_id, description,
-                                         parsed_description, output)
+        retrieved_record = get_nc_record(record_id, parsed_description, output)
         print("%s: End nc_db." % datetime.now())
     else:
         retrieved_record = None

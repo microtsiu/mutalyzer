@@ -1,52 +1,96 @@
-import time
 from datetime import datetime
 
 import mmap
 import os
 from Bio.Seq import Seq
-from Bio.Alphabet import generic_dna, generic_protein
+from Bio.Alphabet import generic_dna
 from mutalyzer.GenRecord import PList, Locus, Gene, Record
 from mutalyzer.dbgb.models import Transcript, Reference
+from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
 from mutalyzer.config import settings
 
 
-def get_sequence_mmap(file_path, start, end):
+def get_nc_record(record_id, parsed_description, output):
     """
-    Sequence retrieval.
-    :param file_path: Path towards the sequence file.
-    :param start: Start position.
-    :param end: End position
-    :return: The sequence.
+    Get an NC record from the gbparser database and transform it into the
+    Mutalyzer record format.
+
+    :param record_id: HGVS format record description.
+    :param parsed_description: HGVS description object.
+    :param output: Mutalyzer special all purpose output object.
+    :return: The record in mutalyzer format or None if not found.
     """
-    with open(file_path, "r+b") as f:
-        # memory-map the file, size 0 means whole file
-        mm = mmap.mmap(f.fileno(), 0)
-        return mm[start - 1:end]
+    if not _configuration_check(output):
+        return None
+
+    if parsed_description.RefType in ['p', 'm', 'n']:
+        output.addMessage(
+            __file__, 4, 'ECHROMCOORD', 'Could not retrieve information for '
+                                        'the provided {}. coordinate system.'
+                                        .format(parsed_description.RefType))
+        return None
+
+    # Get the accession
+    accession = record_id.split('.')[0]
+    version = record_id.split('.')[1]
+
+    reference = _get_reference(accession, version)
+
+    # If no reference present in the database we just return.
+    if reference is None:
+        return None
+
+    if parsed_description.RefType == 'g':
+        # Example: NC_000001.11:g.111501128del
+        p_s, p_e = _get_description_boundary_positions(parsed_description)
+        db_transcripts = _get_transcripts(reference, p_s, p_e)
+    elif parsed_description.RefType == 'c':
+        if parsed_description.Gene:
+            # Example: 'NC_000001.11(OR4F5_v001):c.101del'
+            transcripts = Transcript.query.\
+                filter_by(reference_id=reference.id,
+                          gene=parsed_description.Gene.GeneSymbol)\
+                .all()
+            if transcripts and len(transcripts) > 0:
+                db_transcripts = _get_transcripts(reference,
+                                                  *_boundaries(transcripts))
+            else:
+                return _record_with_genes_only(reference)
+        elif parsed_description.AccNoTransVar:
+            # Example: 'NC_000001.11(NM_001302680.1):c.62825del'
+            accession = parsed_description.AccNoTransVar[0]
+            version = parsed_description.AccNoTransVar[1]
+            try:
+                transcript = Transcript.query.\
+                    filter_by(reference_id=reference.id,
+                              transcript_accession=accession,
+                              transcript_version=version).one()
+            except NoResultFound:
+                return _record_with_genes_only(reference)
+            except MultipleResultsFound:
+                output.addMessage(
+                    __file__, 4, 'NCDBERROR', 'Possible NC DB error'
+                                              ' - multiple entries.')
+                return None
+            else:
+                db_transcripts = _get_transcripts(reference,
+                                                  transcript.transcript_start,
+                                                  transcript.transcript_stop)
+        else:
+            # Example: 'NC_000001.11:62825del'
+            return _record_with_genes_only(reference)
+            # db_transcripts = Transcript.query.\
+            #     filter_by(reference_id=reference.id).all()
+    else:
+        return None
+
+    print("%s: End nc_db get_transcripts" % datetime.now())
+
+    return _get_mutalyzer_record(reference, db_transcripts)
 
 
-def get_reference(accession, version):
-    """
-    Retrieves the database reference entry for the user provided accession and
-    version.
-    :param accession: The accession from the user provided description.
-    :param version: The version number from the user provided description.
-    :return: Database reference entry.
-    """
-    reference = Reference.query.filter_by(accession=str(accession), version=str(version)) \
-        .order_by(Reference.id.asc()) \
-        .first()
-    return reference
-
-
-def get_mutalyzer_record(reference, db_transcripts):
-    """
-    Creates a Mutalyzer specific record from the transcript entries retrieved
-    from the gbparser database.
-    :param reference: A gbparser database reference entry.
-    :param db_transcripts:A gbparser database list of transcript.
-    :return: The Mutalyzer record.
-    """
+def _bare_record(reference):
     record = Record()
     # Populating the record with the generic information.
     record.source_id = reference.accession
@@ -55,6 +99,38 @@ def get_mutalyzer_record(reference, db_transcripts):
     record.source_version = reference.version
     record.organism = 'Homo sapiens'
     record.molType = 'g'
+    return record
+
+
+def _record_with_genes_only(reference):
+    gene_names = Transcript.query.with_entities(Transcript.gene). \
+        filter_by(reference_id=reference.id).all()
+    record = _bare_record(reference)
+    genes = []
+    for gene_name in gene_names:
+        gene = Gene(gene_name.gene)
+        version = gene.newLocusTag()
+        my_transcript = Locus(version)
+
+        my_transcript.mRNA = PList()
+        my_transcript.CDS = PList()
+
+        gene.transcriptList.append(my_transcript)
+        genes.append(gene)
+    record.geneList = genes
+    record.seq = Seq('', generic_dna)
+    return record
+
+
+def _get_mutalyzer_record(reference, db_transcripts):
+    """
+    Creates a Mutalyzer specific record from the transcript entries retrieved
+    from the gbparser database.
+    :param reference: A gbparser database reference entry.
+    :param db_transcripts:A gbparser database list of transcript.
+    :return: The Mutalyzer record.
+    """
+    record = _bare_record(reference)
 
     # Extracting the transcripts from the DB entries.
     transcripts = []
@@ -67,8 +143,10 @@ def get_mutalyzer_record(reference, db_transcripts):
             'cds_start': transcript.cds_start,
             'cds_stop': transcript.cds_stop,
             'exons': [],
-            'transcriptID': transcript.transcript_accession + '.' + transcript.transcript_version,
-            'proteinID': transcript.protein_accession + '.' + transcript.protein_version,
+            'transcriptID': transcript.transcript_accession + '.' +
+                            transcript.transcript_version,
+            'proteinID': transcript.protein_accession + '.' +
+                         transcript.protein_version,
             'linkMethod': 'ncbi'
         }
         if transcript.exons and isinstance(transcript.exons, list):
@@ -119,7 +197,7 @@ def get_mutalyzer_record(reference, db_transcripts):
     # Get the sequence.
     seq_path = settings.SEQ_PATH + reference.checksum_sequence + '.sequence'
     try:
-        seq = Seq(get_sequence_mmap(seq_path, 1, reference.length + 1),
+        seq = Seq(_get_sequence_mmap(seq_path, 1, reference.length + 1),
                   generic_dna)
     except IOError:
         return None
@@ -129,7 +207,7 @@ def get_mutalyzer_record(reference, db_transcripts):
     return record
 
 
-def get_description_boundary_positions(description):
+def _get_description_boundary_positions(description):
     """
     Determines the minimum and maximum positions that appear in the operations
     of an HGVS description.
@@ -155,14 +233,14 @@ def get_description_boundary_positions(description):
     return min(positions), max(positions)
 
 
-def configuration_check(output):
+def _configuration_check(output):
     # Check if the required variables were set into settings.
     try:
         settings.SEQ_PATH
         settings.DATABASE_GB_URI
     except (NameError, AttributeError):
         output.addMessage(
-            __file__, 2, 'NCSETTINGS', 'Chromosomal database settings not set.')
+            __file__, 2, 'NCSETTINGS', 'Chromosomal DB settings not set.')
         return False
 
     # Check if the sequence folder exists.
@@ -174,51 +252,7 @@ def configuration_check(output):
     return True
 
 
-def get_nc_record(record_id, description, parsed_description, output):
-    """
-    Get an NC record from the gbparser database and transform it into the
-    Mutalyzer record format.
-
-    :param record_id: HGVS format record description.
-    :param parsed_description: HGVS description object.
-    :return: The record in mutalyzer format or None if not found.
-    """
-    if not configuration_check(output):
-        return None
-
-    if parsed_description.RefType in ['p', 'm', 'n']:
-        output.addMessage(
-            __file__, 4, 'ECHROMCOORD', 'Could not retrieve information for '
-                                        'the provided {}. coordinate system.'
-                                        .format(parsed_description.RefType))
-        return None
-
-    # Get the accession
-    accession = record_id.split('.')[0]
-    version = record_id.split('.')[1]
-
-    reference = get_reference(accession, version)
-
-    # If no reference present in the database we just return.
-    if reference is None:
-        return None
-
-    if parsed_description.RefType == 'g':
-        # Find the start and end positions.
-        position_start, position_end = get_description_boundary_positions(parsed_description)
-        # Get the DB transcript entries.
-        db_transcripts = get_transcripts(reference, position_start, position_end)
-    elif parsed_description.RefType == 'c':
-        db_transcripts = Transcript.query.filter_by(reference_id=reference.id).all()
-    else:
-        return None
-
-    print("%s: End nc_db get_transcripts" % datetime.now())
-
-    return get_mutalyzer_record(reference, db_transcripts)
-
-
-def get_db_boundaries_positions(reference, position_start, position_end):
+def _get_db_boundaries_positions(reference, position_start, position_end):
     """
     Providing two positions on a chromosome reference this method will query
     the gbparser database and will return the extremity positions of the
@@ -255,13 +289,27 @@ def get_db_boundaries_positions(reference, position_start, position_end):
     p_s = position_start
     p_e = position_end
 
-    positions = {p_s, p_e}
+    transcripts = Transcript.query.\
+        filter_by(reference_id=reference.id). \
+        filter(((Transcript.transcript_start <= p_s) &
+                (Transcript.transcript_stop >= p_e)) |
+               ((Transcript.transcript_start >= p_s) &
+                (Transcript.transcript_stop <= p_e)) |
+               ((Transcript.transcript_start <= p_s) &
+                (Transcript.transcript_stop >= p_s)) |
+               ((Transcript.transcript_start <= p_e) &
+                (Transcript.transcript_stop >= p_e)))\
+        .all()
+    print transcripts
 
-    transcripts = Transcript.query.filter_by(reference_id=reference.id). \
-        filter(((Transcript.transcript_start <= p_s) & (Transcript.transcript_stop >= p_e)) |
-               ((Transcript.transcript_start >= p_s) & (Transcript.transcript_stop <= p_e)) |
-               ((Transcript.transcript_start <= p_s) & (Transcript.transcript_stop >= p_s)) |
-               ((Transcript.transcript_start <= p_e) & (Transcript.transcript_stop >= p_e))).all()
+    if transcripts and len(transcripts) > 0:
+        return _boundaries(transcripts)
+    else:
+        return p_s, p_e
+
+
+def _boundaries(transcripts):
+    positions = set()
 
     for transcript in transcripts:
         positions.add(transcript.transcript_start)
@@ -273,7 +321,23 @@ def get_db_boundaries_positions(reference, position_start, position_end):
     return p_s, p_e
 
 
-def get_transcripts(reference, position_start, position_end):
+def _get_reference(accession, version):
+    """
+    Retrieves the database reference entry for the user provided accession and
+    version.
+    :param accession: The accession from the user provided description.
+    :param version: The version number from the user provided description.
+    :return: Database reference entry.
+    """
+    reference = Reference.query.\
+        filter_by(accession=str(accession),
+                  version=str(version))\
+        .order_by(Reference.id.asc()) \
+        .first()
+    return reference
+
+
+def _get_transcripts(reference, position_start, position_end):
     """
     Retrieves the transcripts information from the database for the provided
     reference that are between the provided start and end positions to which
@@ -293,12 +357,30 @@ def get_transcripts(reference, position_start, position_end):
     else:
         p_e = reference.length
 
-    p_s, p_e = get_db_boundaries_positions(reference, p_s, p_e)
+    p_s, p_e = _get_db_boundaries_positions(reference, p_s, p_e)
 
     transcripts = Transcript.query.filter_by(reference_id=reference.id). \
-        filter(((Transcript.transcript_start <= p_s) & (Transcript.transcript_stop >= p_e)) |
-               ((Transcript.transcript_start >= p_s) & (Transcript.transcript_stop <= p_e)) |
-               ((Transcript.transcript_start <= p_s) & (Transcript.transcript_stop >= p_s)) |
-               ((Transcript.transcript_start <= p_e) & (Transcript.transcript_stop >= p_e))).all()
+        filter(((Transcript.transcript_start <= p_s) &
+                (Transcript.transcript_stop >= p_e)) |
+               ((Transcript.transcript_start >= p_s) &
+                (Transcript.transcript_stop <= p_e)) |
+               ((Transcript.transcript_start <= p_s) &
+                (Transcript.transcript_stop >= p_s)) |
+               ((Transcript.transcript_start <= p_e) &
+                (Transcript.transcript_stop >= p_e))).all()
 
     return transcripts
+
+
+def _get_sequence_mmap(file_path, start, end):
+    """
+    Sequence retrieval.
+    :param file_path: Path towards the sequence file.
+    :param start: Start position.
+    :param end: End position
+    :return: The sequence.
+    """
+    with open(file_path, "r+b") as f:
+        # memory-map the file, size 0 means whole file
+        mm = mmap.mmap(f.fileno(), 0)
+        return mm[start - 1:end]
