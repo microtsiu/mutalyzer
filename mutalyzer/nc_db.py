@@ -90,6 +90,39 @@ def get_nc_record(record_id, parsed_description, output):
     return _get_mutalyzer_record(reference, db_transcripts)
 
 
+def cds_position_list(mrna_position_list, cds_location):
+    """
+    Construct a list of coordinates that contains CDS start and stop and
+    the internal splice sites.
+
+    @arg mrna_position_list: mRNA positions/coordinates list
+    @type mrna_position_list: list (integer)
+    @arg cds_location: coding DNA positions/coordinates
+    @type cds_location: list (integer)
+
+    @return: CDS positions plus internal splice sites
+    @rtype: list (integer)
+    """
+    # print 'cds_position_list: mrna_position_list', mrna_position_list
+    # print 'cds_position_list: cds_location', cds_location
+
+    i = 1
+    ret = [cds_location[0]]
+
+    while i <= len(mrna_position_list) - 1 and cds_location[0] > mrna_position_list[i]:
+        i += 2
+
+    j = i
+    while j <= len(mrna_position_list) and cds_location[1] > mrna_position_list[j]:
+        j += 2
+
+    ret.extend(mrna_position_list[i:j])
+    ret.append(cds_location[1])
+
+    # print 'cds_position_list: ret', ret
+    return ret
+
+
 def _bare_record(reference):
     record = Record()
     # Populating the record with the generic information.
@@ -171,24 +204,35 @@ def _get_mutalyzer_record(reference, db_transcripts):
         if transcript['strand'] == '-':
             gene.orientation = -1
 
-        version = gene.newLocusTag()
-        my_transcript = Locus(version)
+        my_transcript = Locus(gene.newLocusTag())
 
         my_transcript.mRNA = PList()
         my_transcript.mRNA.location = [transcript['transcript_start'],
                                        transcript['transcript_stop']]
+
         my_transcript.CDS = PList()
         my_transcript.CDS.location = [transcript['cds_start'],
                                       transcript['cds_stop']]
+        my_transcript.exon = PList()
         if transcript.get('exons') and isinstance(transcript.get('exons'), list):
+            exon_list = []
             for exon in transcript['exons']:
-                my_transcript.CDS.positionList.append(exon['start'])
-                my_transcript.CDS.positionList.append(exon['stop'])
+                exon_list.extend([exon['start'], exon['stop']])
+            my_transcript.exon.positionList = exon_list
+        else:
+            my_transcript.exon.positionList = my_transcript.mRNA.location
+
+        my_transcript.mRNA.positionList = my_transcript.exon.positionList
+        my_transcript.mRNA.positionList.sort()
+
+        my_transcript.CDS.positionList = cds_position_list(my_transcript.mRNA.positionList,
+                                                           my_transcript.CDS.location)
+
         my_transcript.transcriptID = transcript['transcriptID']
         my_transcript.proteinID = transcript['proteinID']
         my_transcript.linkMethod = 'ncbi'
         my_transcript.transcribe = True
-
+        my_transcript.translate = True
         gene.transcriptList.append(my_transcript)
         gene_dict[gene.name] = gene
 
@@ -300,7 +344,6 @@ def _get_db_boundaries_positions(reference, position_start, position_end):
                ((Transcript.transcript_start <= p_e) &
                 (Transcript.transcript_stop >= p_e)))\
         .all()
-    print transcripts
 
     if transcripts and len(transcripts) > 0:
         return _boundaries(transcripts)
