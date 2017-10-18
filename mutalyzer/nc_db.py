@@ -44,7 +44,6 @@ def get_nc_record(record_id, parsed_description, output):
     if parsed_description.RefType == 'g':
         # Example: NC_000001.11:g.111501128del
         p_s, p_e = _get_description_boundary_positions(parsed_description)
-        db_transcripts = _get_transcripts(reference, p_s, p_e)
     elif parsed_description.RefType == 'c':
         if parsed_description.Gene:
             # Example: 'NC_000001.11(OR4F5_v001):c.101del'
@@ -53,8 +52,7 @@ def get_nc_record(record_id, parsed_description, output):
                           gene=parsed_description.Gene.GeneSymbol)\
                 .all()
             if transcripts and len(transcripts) > 0:
-                db_transcripts = _get_transcripts(reference,
-                                                  *_boundaries(transcripts))
+                p_s, p_e = _boundaries(transcripts)
             else:
                 return _record_with_genes_only(reference)
         elif parsed_description.AccNoTransVar:
@@ -74,9 +72,7 @@ def get_nc_record(record_id, parsed_description, output):
                                               ' - multiple entries.')
                 return None
             else:
-                db_transcripts = _get_transcripts(reference,
-                                                  transcript.transcript_start,
-                                                  transcript.transcript_stop)
+                p_s, p_e = transcript.transcript_start, transcript.transcript_stop
         else:
             # Example: 'NC_000001.11:62825del'
             return _record_with_genes_only(reference)
@@ -85,9 +81,11 @@ def get_nc_record(record_id, parsed_description, output):
     else:
         return None
 
+    db_transcripts = _get_transcripts(reference, p_s, p_e)
     print("%s: End nc_db get_transcripts" % datetime.now())
 
-    return _get_mutalyzer_record(reference, db_transcripts)
+    record = _get_mutalyzer_record(reference, db_transcripts)
+    return record
 
 
 def cds_position_list(mrna_position_list, cds_location):
