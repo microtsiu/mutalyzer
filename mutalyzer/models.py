@@ -210,6 +210,11 @@ class LegendRecord(ComplexModel):
 #LegendRecord
 
 
+class RequestExtras(ComplexModel):
+    original = Boolean()
+    mutated = Boolean()
+
+
 class MutalyzerOutput(ComplexModel):
     """
     Return type of SOAP method runMutalyzer.

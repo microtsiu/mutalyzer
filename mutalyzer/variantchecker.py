@@ -1840,8 +1840,9 @@ def check_variant(description, output):
                                       transcript.proteinProduct,
                                       transcript.linkMethod])
 
-    output.addOutput('original', unicode(mutator.orig))
-    output.addOutput('mutated', unicode(mutator.mutated))
+    if not output.getOutput('add_sequence_to_output'):
+        output.addOutput('original', unicode(mutator.orig))
+        output.addOutput('mutated', unicode(mutator.mutated))
 
     # Chromosomal region (only for GenBank human transcript references).
     # This is still quite ugly code, and should be cleaned up once we have

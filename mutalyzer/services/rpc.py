@@ -999,6 +999,133 @@ class MutalyzerService(ServiceBase):
         return result
     #runMutalyzer
 
+    @srpc(Mandatory.Unicode, RequestExtras, _returns=MutalyzerOutput)
+    def runMutalyzerLight(variant, extras) :
+        """
+        Run the Mutalyzer name checker.
+
+        @arg variant: The variant description to check.
+        @type variant: string
+
+        @arg extras: Additional fields to be included in the response.
+        @type extras: RequestExtras
+
+
+        @return: Default response object contains the following fields:
+            - referenceId: Identifier of the reference sequence used.
+            - sourceId: Identifier of the reference sequence source, e.g. the
+                chromosomal accession number and version in case referenceId
+                is a  UD reference created as a chromosomal slice.
+            - sourceAccession: Accession number of the reference sequence
+                source (only for genbank references).
+            - sourceVersion: Version number of the reference sequence source
+                (only for genbank references).
+            - molecule: Molecular type of the reference sequence.
+            - errors: Number of errors.
+            - warnings: Number of warnings.
+            - summary: Summary of messages.
+            - chromDescription: Chromosomal description.
+            - genomicDescription: Genomic description.
+            - transcriptDescriptions: List of transcript descriptions.
+            - proteinDescriptions: List of protein descriptions.
+            - exons: If a transcript is selected, array of ExonInfo objects
+                for each exon in the selected transcript with fields:
+                - cStart
+                - gStart
+                - cStop
+                - gStop
+            - legend: Array with name and information per transcript variant
+                and protein isoform. Each entry is an array with the following
+                fields:
+                - name
+                - id
+                - locusTag
+                - product
+                - linkMethod
+            - messages: List of (error) messages.
+            If extras is utililized the following fields are included:
+                - original: Original sequence.
+                - mutated: Mutated sequence.
+        """
+        def check_param(obj, attr=None):
+            """
+            Checks whether `attr` is present in the `obj`. Added specifically
+            for the `extras` parameter.
+            :param obj: Call parameter.
+            :param attr: Attribute to search for in obj.
+            :return:
+            """
+            if not obj:
+                return False
+            if obj and not attr:
+                return True
+            if hasattr(obj, attr) and getattr(obj, attr):
+                return True
+            else:
+                return False
+
+        O = Output(__file__)
+        O.addMessage(__file__, -1, "INFO",
+            "Received request runMutalyzer(%s)" % (variant))
+
+        stats.increment_counter('name-checker/webservice')
+
+        if not check_param(extras, 'original') and not check_param(extras, 'mutated'):
+            O.addOutput('add_sequence_to_output', 'not')
+        variantchecker.check_variant(variant, O)
+
+        result = MutalyzerOutput()
+
+        result.referenceId = O.getIndexedOutput('reference_id', 0)
+        result.sourceId = O.getIndexedOutput('source_id', 0)
+        result.sourceAccession = O.getIndexedOutput('source_accession', 0)
+        result.sourceVersion = O.getIndexedOutput('source_version', 0)
+        result.molecule = O.getIndexedOutput('molecule', 0)
+
+        if check_param(extras, 'original'):
+            result.original = O.getIndexedOutput("original", 0)
+        if check_param(extras, 'mutated'):
+            result.mutated = O.getIndexedOutput("mutated", 0)
+
+        result.chromDescription = \
+            O.getIndexedOutput("genomicChromDescription", 0)
+        result.genomicDescription = \
+            O.getIndexedOutput("genomicDescription", 0)
+        result.transcriptDescriptions = O.getOutput("descriptions")
+        result.proteinDescriptions = O.getOutput("protDescriptions")
+
+        if O.getIndexedOutput('hasTranscriptInfo', 0, False):
+            result.exons = []
+            for e in O.getOutput('exonInfo'):
+                exon = ExonInfo()
+                exon.gStart, exon.gStop, exon.cStart, exon.cStop = e
+                result.exons.append(exon)
+
+        result.legend = []
+        for name, id, locusTag, product, linkMethod in O.getOutput('legends'):
+            record = LegendRecord()
+            record.name = name
+            record.id = id
+            record.locusTag = locusTag
+            record.product = product
+            record.linkMethod = linkMethod
+            result.legend.append(record)
+
+        result.errors, result.warnings, result.summary = O.Summary()
+
+        O.addMessage(__file__, -1, "INFO",
+            "Finished processing runMutalyzer(%s)" % (variant))
+
+        result.messages = []
+        for message in O.getMessages():
+            soap_message = SoapMessage()
+            soap_message.errorcode = message.code
+            soap_message.message = message.description
+            result.messages.append(soap_message)
+
+        return result
+    #runMutalyzerLight
+
     @srpc(Mandatory.Unicode, Mandatory.Unicode, _returns=TranscriptNameInfo)
     def getGeneAndTranscript(genomicReference, transcriptReference) :
         """
